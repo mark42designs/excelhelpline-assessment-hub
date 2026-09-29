@@ -891,6 +891,8 @@ let current = 0;
 let answers = new Array(TOTAL).fill(null); // stores chosen index or null
 let timerId = null;
 let timeLeft = SECONDS_PER_Q;
+let submissionId = null;   // one stable id per completed assessment (dedupe key)
+let submitting = false;    // guard so submit can't fire twice
 
 /* ============================================================
    SCREEN HELPER
@@ -1036,9 +1038,22 @@ function computeScores(){
    SUBMIT (with retries)
    ============================================================ */
 async function submitResults(){
+  if(submitting) return;   // never let two submits run at once
+  submitting = true;
   showScreen('submitting');
   const scores = computeScores();
+
+  // One stable id for this assessment, reused across every retry (and the
+  // manual "Try Again"), so the server records the answers only once even
+  // if a response is lost and we resend.
+  if(!submissionId){
+    submissionId = (window.crypto && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : (Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+  }
+
   const payload = {
+    submissionId: submissionId,
     name: student.name,
     email: student.email,
     basicScore: scores.basic,
@@ -1063,6 +1078,7 @@ async function submitResults(){
     }
   }
 
+  submitting = false;
   if(ok){ renderResult(scores, 'result', 'resRows'); }
   else  { renderResult(scores, 'error',  'errRows'); }
 }
